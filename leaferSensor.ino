@@ -19,8 +19,8 @@ char plantCollectionId[50];
 
 bool isReady = false;
 
-const char* queryUrl = "http://192.168.1.29:3000/sensor";
-
+const char* queryUrl = "https://leafer-rest-api-prod.herokuapp.com/sensor";
+//const char* queryUrl = "http://192.168.1.29:3000/sensor";
 void createSensor(){
   vTaskDelay(1000);
   
@@ -34,6 +34,7 @@ void createSensor(){
   httpCreate.begin(String(queryUrl));
   httpCreate.addHeader("Content-Type", "application/json");
   httpCreate.addHeader("Authorization", "Bearer " + String(token));
+  httpCreate.addHeader("Host", "leafer-rest-api-prod.herokuapp.com");
   int httpCreateCode = httpCreate.POST(postMessage);
   if (httpCreateCode > 0) {
     Serial.println("Server reached and responded to POST request.");
