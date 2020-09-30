@@ -3,24 +3,34 @@
 
 #include "WiFi.h"
 #include "ESPAsyncWebServer.h"
+#include "DHTesp.h"
 
 const char* ssidDevice = "leaferSensor";
 
+int DHTpin = 14;
 int sensorPin = 34;
 int sensorValue = 0;
 int valuePercent = 0;
+float air = 0.0;
+float temperature = 0.0;
 
 AsyncWebServer webServer(80);
+DHTesp dht;
 
 char ssid[50];
 char password[50];
 char token[300];
 char plantCollectionId[50];
+char sensorId[50];
 
 bool isReady = false;
 
-const char* queryUrl = "https://leafer-rest-api-prod.herokuapp.com/sensor";
-//const char* queryUrl = "http://192.168.1.29:3000/sensor";
+//const char* queryUrl = "https://leafer-rest-api-prod.herokuapp.com/sensor";
+const char* queryUrl = "http://192.168.1.29:3000/sensor";
+
+//const char* queryUrlSensorData = "https://leafer-rest-api-prod.herokuapp.com/sensor-data";
+const char* queryUrlSensorData = "http://192.168.1.29:3000/sensor-data";
+
 void createSensor(){
   vTaskDelay(1000);
   
@@ -48,6 +58,12 @@ void createSensor(){
       
     }
     String payload = httpCreate.getString();
+    DynamicJsonDocument jsonBuffer(1024);
+    deserializeJson(jsonBuffer, payload);
+    JsonObject res = jsonBuffer.as<JsonObject>();
+    String sensorString = res["id"];
+    sensorString.toCharArray(sensorId, 50);
+    Serial.println(sensorId);
     Serial.println(payload);
   }
   else{
@@ -61,28 +77,32 @@ void createSensor(){
 
 void sendData() {
 
-  
+  air = dht.getHumidity();
+  temperature = dht.getTemperature();
   sensorValue = analogRead(sensorPin);
   valuePercent = 100 - map(sensorValue, 0, 4095, 0, 100);
 
-  String putMessage;
+  String postMessage;
   HTTPClient httpUpdate;
-  const int capacity = JSON_OBJECT_SIZE(2);
+  const int capacity = JSON_OBJECT_SIZE(4);
   StaticJsonDocument<capacity> doc;
-  doc["plantCollectionId"] = String(plantCollectionId).toInt();
-  doc["humidity"] = valuePercent;
-  serializeJsonPretty(doc, putMessage);
+  doc["sensorId"] = String(sensorId).toInt();
+  doc["groundHumidity"] = valuePercent;
+  doc["airHumidity"] = (int) air;
+  doc["temperature"] = (int) temperature;
+  
+  serializeJsonPretty(doc, postMessage);
   serializeJsonPretty(doc, Serial);
 
-  httpUpdate.begin(queryUrl);
+  httpUpdate.begin(queryUrlSensorData);
   httpUpdate.addHeader("Content-Type", "application/json");
   httpUpdate.addHeader("Authorization", "Bearer " + String(token));
-  int httpUpdateCode = httpUpdate.PUT(putMessage);
+  int httpUpdateCode = httpUpdate.POST(postMessage);
   if (httpUpdateCode > 0) {
-    Serial.println("Server reached and responded to PUT request.");
+    Serial.println("Server reached and responded to POST request.");
     Serial.println();
     Serial.println(httpUpdateCode);
-    if (httpUpdateCode == HTTP_CODE_OK) {
+    if (httpUpdateCode == HTTP_CODE_CREATED) {
       Serial.print("Server responded with requested payload: ");
       String payload = httpUpdate.getString();
       Serial.println(payload);
@@ -92,7 +112,7 @@ void sendData() {
     }
   }
   else{
-    Serial.println("Server could not be reached or server did not reply to PUT request.");
+    Serial.println("Server could not be reached or server did not reply to POST request.");
   }
   httpUpdate.end();
   vTaskDelay(5000);
@@ -100,9 +120,10 @@ void sendData() {
 
 void setup() {
   Serial.begin(115200);
+  dht.setup(DHTpin, DHTesp::DHT11);
   Serial.println();
   Serial.println("Configuring access point...");
-  WiFi.softAP(ssidDevice);
+  WiFi.softAP(ssidDevice, "123456789");
   IPAddress ipDevice = WiFi.softAPIP();
   Serial.print("Device IP address: ");
   Serial.println(ipDevice);
@@ -125,6 +146,9 @@ void setup() {
         }
         if(p->name().equals("plantCollectionId")){
           p->value().toCharArray(plantCollectionId, 50);
+        }
+        if(p->name().equals("sensorId")){
+          p->value().toCharArray(sensorId, 50);
         }
         Serial.print("Param name: ");
         Serial.println(p->name());
