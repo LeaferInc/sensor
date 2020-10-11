@@ -108,6 +108,12 @@ void sendData() {
       Serial.println(payload);
     }
     else {
+      String payload = httpUpdate.getString();
+      if(payload.indexOf("Sensor disabled")>0){
+        Serial.println("Sensor disabled");
+        Serial.println("Switching to pairing mode");
+        ESP.restart();
+      }
       Serial.println("Server error");
     }
   }
